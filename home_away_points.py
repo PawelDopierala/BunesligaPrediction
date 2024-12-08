@@ -9,12 +9,12 @@ def update_points(team, points_dict, points_to_add):
     points_dict[team] += points_to_add
 
 
-def update_match_points(row, points):
-    if row['predictedResult'] == 'H':
+def update_match_points(row, result, points):
+    if result == 'H':
         update_points(row['HomeTeam'], points, 3)
-    elif row['predictedResult'] == 'A':
+    elif result == 'A':
         update_points(row['AwayTeam'], points, 3)
-    elif row['predictedResult'] == 'D':
+    elif result == 'D':
         update_points(row['HomeTeam'], points, 1)
         update_points(row['AwayTeam'], points, 1)
 
@@ -63,12 +63,12 @@ def create_elo_rating():
         "Augsburg": 1616.46337891,
         "Stuttgart": 1621.03259277,
         "Hertha": 1589.0,
-        "Schalke": 1579.00720215,
+        "Schalke 04": 1579.00720215,
         "Werder Bremen": 1597.18164062
     }
 
 
-def create_draw_chance(df, teams):
+def create_draw_chance(df):
     draw_ratio = defaultdict(float)
     total_matches = 34
 
@@ -80,8 +80,8 @@ def create_draw_chance(df, teams):
     for team in draw_ratio:
         draw_ratio[team] /= total_matches
 
-    mean_draw_ratio = sum(draw_ratio.values())/len(draw_ratio.values())
-    for team in teams:
+    mean_draw_ratio = sum(draw_ratio.values()) / len(draw_ratio.values())
+    for team in create_elo_rating().keys():
         if not team in draw_ratio:
             draw_ratio[team] = mean_draw_ratio
 
@@ -100,8 +100,13 @@ def predict_result(home_win_prob, away_win_prob, draw_prob):
     return random.choices(values, probabilities)[0]
 
 
-def simulate_season(df, team_points, elo_rating, draw_ratio):
-    pred_result = []
+def elo_change(result, win_probability, goals=1):
+    return 30 * goals * (result - win_probability)
+
+
+def simulate_season(df, team_points, draw_ratio):
+    elo_rating = create_elo_rating()
+    points = defaultdict(int)
 
     for _, row in df.iterrows():
         home_points = team_points.get(row['HomeTeam'], 0)
@@ -116,13 +121,12 @@ def simulate_season(df, team_points, elo_rating, draw_ratio):
         draw_prob = win_home_prob * home_draw_rate + win_away_prob * away_draw_rate
         win_home_prob -= draw_prob * win_home_prob
         win_away_prob -= draw_prob * win_away_prob
-        pred_result.append(predict_result(win_home_prob, win_away_prob, draw_prob))
-
-    df['predictedResult'] = pred_result
-
-    points = defaultdict(int)
-    for _, row in df.iterrows():
-        update_match_points(row, points)
+        result = predict_result(win_home_prob, win_away_prob, draw_prob)
+        update_match_points(row, result, points)
+        home_result_converted = 1 if result == 'H' else 0.5 if result == 'D' else 0
+        elo_rating[row['HomeTeam']] += elo_change(home_result_converted, win_home_prob)
+        away_result_converted = 1 if result == 'A' else 0.5 if result == 'D' else 0
+        elo_rating[row['AwayTeam']] += elo_change(away_result_converted, win_away_prob)
 
     return points
 
@@ -132,33 +136,45 @@ if __name__ == "__main__":
     df23 = pd.read_csv("fduk_bundesliga_22_23.csv")
 
     team_points = get_additional_home_points(df12)
-    elo_rating = create_elo_rating()
-    draw_ratio = create_draw_chance(df12, elo_rating.keys())
+    draw_ratio = create_draw_chance(df12)
 
-    team_wins = defaultdict(int)
-    team_points_sum = defaultdict(int)
-
-    iterations = 100
+    team_points_sum = {team: 0 for team in create_elo_rating().keys()}
+    teams_results_definition_list = [range(1), range(4), range(16,18), range(15,16)]
+    teams_results_list = [{team: 0 for team in create_elo_rating().keys()} for i in range(len(teams_results_definition_list))]
+    iterations = 1000
     for _ in range(iterations):
-        points = simulate_season(df23, team_points, elo_rating, draw_ratio)
+        points = simulate_season(df23, team_points, draw_ratio)
 
         sorted_teams = sorted(points.items(), key=lambda k: k[1], reverse=True)
         top_team = sorted_teams[0][0]
-        team_wins[top_team] += 1
+        for rang, result in zip(teams_results_definition_list, teams_results_list):
+            teams = [sorted_teams[i][0] for i in rang]
+            for team in teams:
+                result[team] += 1
 
         for team, pts in points.items():
             team_points_sum[team] += pts
 
     team_points_avg = {team: total_pts / iterations for team, total_pts in team_points_sum.items()}
-    team_wins_percent = {team: (wins / iterations) * 100 for team, wins in team_wins.items()}
+    teams_percent_results_list = [
+        {team: (amount / iterations) * 100 for team, amount in team_result.items()} for team_result in teams_results_list
+    ]
 
-    sorted_wins = sorted(team_wins_percent.items(), key=lambda x: x[1], reverse=True)
     sorted_points_avg = sorted(team_points_avg.items(), key=lambda x: x[1], reverse=True)
 
-    print("Procentowa szansa na zwycięstwo:")
-    for team, wins_percent in sorted_wins:
-        print(f"{team}: {wins_percent:.2f}%")
+    data = {
+        'Team': list(team_points_avg.keys()),
+        'Average Points': list(team_points_avg.values()),
+        'Championship (%)': list(teams_percent_results_list[0].values()),
+        'Champions League (%)': list(teams_percent_results_list[1].values()),
+        'Relegation playoffs (%)': list(teams_percent_results_list[3].values()),
+        'Relegation (%)': list(teams_percent_results_list[2].values())
+    }
 
-    print("\nŚrednia liczba punktów w sezonie:")
-    for team, avg_pts in sorted_points_avg:
-        print(f"{team}: {avg_pts:.2f}")
+    df = pd.DataFrame(data)
+    df_sorted = df.sort_values(by='Average Points', ascending=False)
+
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.expand_frame_repr', False)
+    print(df_sorted)
