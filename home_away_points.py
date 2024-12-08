@@ -68,8 +68,8 @@ def create_elo_rating():
     }
 
 
-def create_draw_chance(df):
-    draw_ratio = defaultdict(int)
+def create_draw_chance(df, teams):
+    draw_ratio = defaultdict(float)
     total_matches = 34
 
     for _, row in df.iterrows():
@@ -79,6 +79,11 @@ def create_draw_chance(df):
 
     for team in draw_ratio:
         draw_ratio[team] /= total_matches
+
+    mean_draw_ratio = sum(draw_ratio.values())/len(draw_ratio.values())
+    for team in teams:
+        if not team in draw_ratio:
+            draw_ratio[team] = mean_draw_ratio
 
     return draw_ratio
 
@@ -100,16 +105,17 @@ def simulate_season(df, team_points, elo_rating, draw_ratio):
 
     for _, row in df.iterrows():
         home_points = team_points.get(row['HomeTeam'], 0)
-        away_points = team_points.get(row['AwayTeam'], 0)
+        away_points = -team_points.get(row['AwayTeam'], 0)
         home_elo = elo_rating.get(row['HomeTeam'], 0)
         away_elo = elo_rating.get(row['AwayTeam'], 0)
 
         win_home_prob = calculate_result(home_points, away_points, home_elo, away_elo)
-        win_away_prob = calculate_result(away_points, home_points, away_elo, home_elo)
-        home_draw_rate = 1 - draw_ratio.get(row['HomeTeam'], 0)
-        away_draw_rate = 1 - draw_ratio.get(row['AwayTeam'], 0)
-        draw_prob = 1 - (win_home_prob * home_draw_rate + win_away_prob * away_draw_rate)
-
+        win_away_prob = 1 - win_home_prob
+        home_draw_rate = draw_ratio.get(row['HomeTeam'], 0)
+        away_draw_rate = draw_ratio.get(row['AwayTeam'], 0)
+        draw_prob = win_home_prob * home_draw_rate + win_away_prob * away_draw_rate
+        win_home_prob -= draw_prob * win_home_prob
+        win_away_prob -= draw_prob * win_away_prob
         pred_result.append(predict_result(win_home_prob, win_away_prob, draw_prob))
 
     df['predictedResult'] = pred_result
@@ -127,7 +133,7 @@ if __name__ == "__main__":
 
     team_points = get_additional_home_points(df12)
     elo_rating = create_elo_rating()
-    draw_ratio = create_draw_chance(df12)
+    draw_ratio = create_draw_chance(df12, elo_rating.keys())
 
     team_wins = defaultdict(int)
     team_points_sum = defaultdict(int)
