@@ -141,7 +141,7 @@ if __name__ == "__main__":
     team_points_sum = {team: 0 for team in create_elo_rating().keys()}
     teams_results_definition_list = [range(1), range(4), range(16,18), range(15,16)]
     teams_results_list = [{team: 0 for team in create_elo_rating().keys()} for i in range(len(teams_results_definition_list))]
-    iterations = 1000
+    iterations = 10000
     for _ in range(iterations):
         points = simulate_season(df23, team_points, draw_ratio)
 
@@ -155,9 +155,9 @@ if __name__ == "__main__":
         for team, pts in points.items():
             team_points_sum[team] += pts
 
-    team_points_avg = {team: total_pts / iterations for team, total_pts in team_points_sum.items()}
+    team_points_avg = {team: round(total_pts / iterations, 2) for team, total_pts in team_points_sum.items()}
     teams_percent_results_list = [
-        {team: (amount / iterations) * 100 for team, amount in team_result.items()} for team_result in teams_results_list
+        {team: round((amount / iterations) * 100, 2) for team, amount in team_result.items()} for team_result in teams_results_list
     ]
 
     sorted_points_avg = sorted(team_points_avg.items(), key=lambda x: x[1], reverse=True)
@@ -178,3 +178,6 @@ if __name__ == "__main__":
     pd.set_option('display.max_columns', None)
     pd.set_option('display.expand_frame_repr', False)
     print(df_sorted)
+
+    df_sorted.to_csv('result.csv', index=False)
+
