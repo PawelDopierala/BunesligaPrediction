@@ -90,8 +90,8 @@ def create_draw_chance(df):
 
 def calculate_result(home_points, away_points, home_elo, away_elo):
     home_value = 100 + home_points + away_points
-    dr = home_elo - away_elo
-    return 1 / (10 ** ((-dr + home_value) / 400) + 1)
+    dr = home_elo - away_elo + home_value
+    return 1 / (10 ** -(dr / 400) + 1)
 
 
 def predict_result(home_win_prob, away_win_prob, draw_prob):
@@ -101,7 +101,7 @@ def predict_result(home_win_prob, away_win_prob, draw_prob):
 
 
 def elo_change(result, win_probability, goals=1):
-    return 30 * goals * (result - win_probability)
+    return 25 * goals * (result - win_probability)
 
 
 def simulate_season(df, team_points, draw_ratio):
@@ -110,7 +110,7 @@ def simulate_season(df, team_points, draw_ratio):
 
     for _, row in df.iterrows():
         home_points = team_points.get(row['HomeTeam'], 0)
-        away_points = -team_points.get(row['AwayTeam'], 0)
+        away_points = team_points.get(row['AwayTeam'], 0)
         home_elo = elo_rating.get(row['HomeTeam'], 0)
         away_elo = elo_rating.get(row['AwayTeam'], 0)
 
