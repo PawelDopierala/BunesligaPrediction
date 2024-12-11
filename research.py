@@ -40,7 +40,9 @@ results_df = pd.DataFrame({
 
 results_df['Total Points'] = results_df['Home Points'] + results_df['Away Points']
 results_df['Home/Total'] = results_df['Home Points'] / results_df['Total Points']
+results_df['Away/Total'] = results_df['Away Points'] / results_df['Total Points']
 results_df['Bonus Home Points'] = (results_df['Home/Total'] - results_df['Home/Total'].mean()) * SCALE
+results_df['Bonus Away Points'] = (results_df['Away/Total'] - results_df['Away/Total'].mean()) * SCALE
 results_df[['Team', 'Bonus Home Points']].to_excel("bonus_points.xlsx")
 
 
